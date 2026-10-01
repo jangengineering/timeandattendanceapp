@@ -288,7 +288,7 @@ async function enterApp() {
 async function loadSchedule() {
   setSync('busy');
   const res = await call('getSchedule');
-  S.cells = res.cells; S.generated = res.generated; S.version = res.version;
+  S.cells = res.cells; S.generated = res.generated; S.version = res.version; S.sv = res.sv;
   setSync('');
 }
 
@@ -418,8 +418,10 @@ function renderAll() {
       <input id="fQ" placeholder="이름 검색" value="${esc(f.q)}">
     </div>
     <div class="grid-wrap"><table class="grid" id="grid"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table></div>
-    <div class="hint">${S.me.admin ? '관리자: 모든 칸을 눌러 수정할 수 있습니다.' : '본인 행(파란색)만 수정할 수 있습니다.'} 날짜 머리글을 누르면 그날 인원 집계를 봅니다.</div>`;
+    <div class="hint">${S.me.admin ? '관리자: 모든 칸을 눌러 수정할 수 있습니다.' : '본인 행(파란색)만 수정할 수 있습니다.'} 날짜 머리글을 누르면 그날 인원 집계를 봅니다.</div>
+    <button class="btn block" id="exportBtn">📥 ${esc(m.label)} 근무표 엑셀로 내려받기</button>`;
 
+  $('#exportBtn').onclick = e => exportMonth(e.currentTarget);
   $('#fOrg').onchange = e => { f.org = e.target.value; renderAll(); };
   $('#fQ').oninput = e => { f.q = e.target.value.trim(); clearTimeout(S._qt); S._qt = setTimeout(() => { renderAll(); const i = $('#fQ'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
   $('#grid').onclick = e => {
@@ -465,12 +467,12 @@ function openDaySummary(date) {
 let adminTab = 'people';
 function renderAdmin() {
   if (!S.me.admin) { $('#vAdmin').innerHTML = ''; return; }
-  const tabs = [['people', '인원'], ['codes', '근태 목록'], ['export', '엑셀 추출'], ['history', '변경 이력']];
+  const tabs = [['people', '인원'], ['codes', '근태 목록'], ['history', '변경 이력']];
   $('#vAdmin').innerHTML = `
     <div class="views" style="padding:0 0 10px">${tabs.map(([k, l]) => `<button data-a="${k}" class="${k === adminTab ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div id="adminBody"></div>`;
   $('#vAdmin .views').onclick = e => { const b = e.target.closest('button[data-a]'); if (b) { adminTab = b.dataset.a; renderAdmin(); } };
-  ({ people: adminPeople, codes: adminCodes, export: adminExport, history: adminHistory })[adminTab]();
+  ({ people: adminPeople, codes: adminCodes, history: adminHistory })[adminTab]();
 }
 
 function adminPeople() {
@@ -489,7 +491,10 @@ function adminPeople() {
   $('#adminBody .adm-list').onclick = async e => {
     const b = e.target.closest('button[data-act]'); if (!b) return;
     const id = b.closest('.row').dataset.id;
-    if (b.dataset.act === 'edit') return editPerson(person(id));
+    if (b.dataset.act === 'edit') {
+      const detail = await call('getPersonDetail', S.me.id, S.me.token, id).catch(() => ({}));
+      return editPerson({ ...person(id), ...detail });
+    }
     await adminCall('movePerson', id, b.dataset.act === 'up' ? -1 : 1);
   };
 }
@@ -507,7 +512,8 @@ function editPerson(p) {
       ${f('g2', '구분 2', '예: FAB RC')}
       ${f('g3', '구분 3', '예: FAB')}
       <label><input type="checkbox" id="pf_admin" style="width:auto" ${v.admin ? 'checked' : ''}> 관리자</label>
-      <div id="pwRow" class="${v.admin ? '' : 'hidden'}"><label>관리자 비밀번호 ${p && p.admin ? '(바꿀 때만 입력)' : ''}</label><input id="pf_pw" type="password" autocomplete="new-password"></div>
+      <div id="pwRow" class="${v.admin ? '' : 'hidden'}"><label>관리자 비밀번호 ${p && p.admin ? '(바꿀 때만 입력)' : ''}</label><input id="pf_pw" type="password" autocomplete="new-password">
+        <label>이메일 (매일 15시 변경 요약 메일 받는 주소)</label><input id="pf_email" type="email" value="${esc(v.email || '')}"></div>
       ${p ? '' : '<div class="hint">추가한 사람의 이번 달·다음 달 일정은 기본 근태(주간, 일요일 빈칸)로 채워집니다.</div>'}
     </div>
     <button class="btn primary block" id="pfSave">저장</button>
@@ -516,7 +522,7 @@ function editPerson(p) {
   $('#pfSave').onclick = async () => {
     const data = { id: p ? p.id : '' };
     ['name', 'team', 'org', 'g1', 'g2', 'g3'].forEach(k => data[k] = $('#pf_' + k).value.trim());
-    data.admin = $('#pf_admin').checked; data.password = $('#pf_pw').value;
+    data.admin = $('#pf_admin').checked; data.password = $('#pf_pw').value; data.email = $('#pf_email').value.trim();
     if (!data.name) return toast('성명을 입력하세요.');
     if (data.admin && !(p && p.admin) && !data.password) return toast('관리자 비밀번호를 입력하세요.');
     if (await adminCall('savePerson', data)) closeSheet();
@@ -558,14 +564,15 @@ function adminCodes() {
 }
 
 function editCode(c) {
-  const v = c || { code: '', bg: '#ffffff', fg: '#000000', work: true, primary: false, active: true, base: '' };
+  const v = c || { code: '', bg: '#ffffff', fg: '#000000', work: true, primary: false, active: true, base: '', group: '' };
   openSheet(`
     <h2>${c ? '근태 수정' : '근태 추가'}</h2>
     <div class="form">
       <label>표기 (줄바꿈은 /)</label><input id="cf_code" value="${esc(v.code.replace(/\n/g, '/'))}" ${c ? 'readonly' : ''}>
       <label>배경색</label><input id="cf_bg" type="color" value="${esc(v.bg)}">
       <label>글자색</label><input id="cf_fg" type="color" value="${esc(v.fg)}">
-      <label>기본형 (기본 근태 계산 시 합산할 근무형태, 예: 1Shift)</label><input id="cf_base" value="${esc(v.base)}">
+      <label>기본형 (새 달 기본 근태 계산 시 합산할 근무형태, 예: 1Shift(OT) → 1Shift)</label><input id="cf_base" value="${esc(v.base)}">
+      <label>집계 묶음 (엑셀 하단 집계표: 1Shift / 주간 / 2Shift 중 하나, 없으면 비움)</label><input id="cf_group" value="${esc(v.group || '')}">
       <label><input type="checkbox" id="cf_work" style="width:auto" ${v.work ? 'checked' : ''}> 근무형태 (기본 근태 계산에 포함)</label>
       <label><input type="checkbox" id="cf_primary" style="width:auto" ${v.primary ? 'checked' : ''}> 선택 목록 위쪽에 표시</label>
       <label><input type="checkbox" id="cf_active" style="width:auto" ${v.active ? 'checked' : ''}> 사용</label>
@@ -573,26 +580,26 @@ function editCode(c) {
     <button class="btn primary block" id="cfSave">저장</button>`);
   $('#cfSave').onclick = async () => {
     const data = { code: $('#cf_code').value.trim().replace(/\//g, '\n'), bg: $('#cf_bg').value, fg: $('#cf_fg').value,
-      base: $('#cf_base').value.trim(), work: $('#cf_work').checked, primary: $('#cf_primary').checked, active: $('#cf_active').checked };
+      base: $('#cf_base').value.trim(), group: $('#cf_group').value.trim(), work: $('#cf_work').checked, primary: $('#cf_primary').checked, active: $('#cf_active').checked };
     if (!data.code) return toast('표기를 입력하세요.');
     if (await adminCall('saveCode', data)) closeSheet();
   };
 }
 
-function adminExport() {
-  $('#adminBody').innerHTML = `<div class="card">
-    <div class="hint" style="margin-top:0">첨부 엑셀 양식(주 단위 5~6주, 집계표 포함)으로 내려받습니다.</div>
-    ${S.boot.months.map((m, i) => `<button class="btn block" data-i="${i}">${esc(m.label)} 근무표 내려받기 (.xlsx)</button>`).join('')}
-  </div>`;
-  $('#adminBody').onclick = async e => {
-    const b = e.target.closest('button[data-i]'); if (!b) return;
-    b.disabled = true; b.textContent = '만드는 중…';
-    try {
-      const res = await call('exportMonth', S.me.id, S.me.token, S.boot.months[+b.dataset.i].key);
-      download(res.filename, res.base64);
-    } catch (e) { toast(errMsg(e)); }
-    renderAdmin();
-  };
+async function exportMonth(btn) {
+  const m = S.boot.months[S.month];
+  btn.disabled = true; const label = btn.textContent; btn.textContent = '엑셀 만드는 중… (10초 정도)';
+  try {
+    const res = await call('exportMonth', S.me.id, S.me.token || '', m.key);
+    download(res.filename, res.base64);
+    openSheet(`
+      <h2>${esc(m.label)} 근무표</h2>
+      <div class="now">${esc(res.filename)}</div>
+      <div class="hint">다운로드가 시작되지 않으면 (카카오톡 등 앱 안에서 열었을 때) 아래 버튼을 누르세요.</div>
+      ${res.url ? `<a class="btn primary block" style="display:block;text-align:center;text-decoration:none" href="${esc(res.url)}" target="_blank">파일 받기</a>` : ''}
+      <button class="btn block" onclick="closeSheet()">닫기</button>`);
+  } catch (e) { toast('엑셀 만들기 실패: ' + errMsg(e)); }
+  btn.disabled = false; btn.textContent = label;
 }
 
 function download(filename, b64) {
@@ -628,7 +635,7 @@ function stopPoll() { clearTimeout(pollTimer); }
 async function poll() {
   if (document.hidden) return schedulePoll();
   try {
-    const res = await call('getChanges', S.version);
+    const res = await call('getChanges', S.version, S.sv);
     if (res.reload) { S.boot = await call('getBootstrap'); await loadSchedule(); render(); }
     else if (res.changes.length) {
       res.changes.forEach(c => { (S.cells[c.personId] = S.cells[c.personId] || {})[c.date] = c.code; });

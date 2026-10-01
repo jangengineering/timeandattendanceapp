@@ -43,7 +43,7 @@
     getBootstrap: () => ({ title: "P5 FAB 건축/안전팀 근태계획", codes: CODES, people, months, today }),
     checkAdminToken: (id, t) => t === 'tok',
     adminLogin: (id, pw) => { if (pw !== '1234') throw new Error('비밀번호가 맞지 않습니다. (미리보기 비밀번호: 1234)'); return 'tok'; },
-    getSchedule: () => ({ cells: JSON.parse(JSON.stringify(cells)), generated, version }),
+    getSchedule: () => ({ cells: JSON.parse(JSON.stringify(cells)), generated, version, sv: 1 }),
     setCell: ({ actorId, personId, date, code, prev }) => {
       const cur = cells[personId][date] || '';
       if (cur !== prev) return { conflict: true, current: cur };
@@ -53,6 +53,7 @@
     },
     getChanges: v => ({ changes: [], version }),
     getHistory: () => history,
+    getPersonDetail: () => ({ email: 'admin@example.com' }),
     movePerson: (a, t, id, dir) => { const i = people.findIndex(p => p.id === id); const [p] = people.splice(i, 1); people.splice(i + dir, 0, p); },
     savePerson: (a, t, data) => {
       if (data.id) Object.assign(people.find(p => p.id === data.id), data);
