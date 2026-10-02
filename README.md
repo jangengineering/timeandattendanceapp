@@ -50,6 +50,18 @@
 
 > 코드를 고친 뒤에는 **배포 > 배포 관리 > ✎ > 버전: 새 버전 > 배포** 를 해야 같은 주소에 반영됩니다.
 
+**영어 화면일 때**
+
+| 한글 화면 | 영어 화면 |
+|---|---|
+| 배포 > 새 배포 | **Deploy > New deployment** |
+| 유형 선택(⚙) > 웹 앱 | **Select type (⚙) > Web app** |
+| 실행 사용자: 나 | **Execute as: Me** |
+| 액세스 권한: 모든 사용자 | **Who has access: Anyone** |
+| 액세스 승인 > 고급 > (프로젝트)(으)로 이동 > 허용 | **Authorize access > Advanced > Go to (project) (unsafe) > Allow** |
+| 웹 앱 URL 복사 > 완료 | **Web app URL > Copy > Done** |
+| 배포 > 배포 관리 > ✎ > 버전: 새 버전 > 배포 | **Deploy > Manage deployments > ✎ (Edit) > Version: New version > Deploy** |
+
 ## 운영 메모
 
 - **팀원 화면에서 인원 추가/빼기** 는 관리자만 보입니다. 추가한 사람은 이번 달부터 기본 근태(주간, 일요일 빈칸)로 채워지고, 뺀 사람은 지난 기록이 남되 이후 화면·추출에서 빠집니다.
